@@ -11,7 +11,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apk:
@@ -61,6 +61,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
+          validate-wrappers: false
 
       - name: Installer la plateforme Android 35 si absente
         run: |
@@ -94,3 +95,15 @@ jobs:
             dist/ASphone-debug.apk.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publier l'APK dans les Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: asphone-debug-${{ github.run_number }}
+          name: ASphone debug ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          body: APK debug de A.Sphone, non signé pour la publication. Build ${{ github.run_number }}.
+          files: |
+            dist/ASphone-debug.apk
+            dist/ASphone-debug.apk.sha256
