@@ -70,7 +70,26 @@ jobs:
           "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" > /dev/null
 
       - name: Compiler l'APK debug
-        run: gradle --no-daemon --console=plain assembleDebug
+        run: gradle --no-daemon --console=plain --continue assembleDebug 2>&1 | tee build.log
+
+      - name: Lister les erreurs de compilation
+        if: failure()
+        run: |
+          {
+            echo "### Erreurs de compilation"
+            echo '```'
+            grep -E "^e: |What went wrong|^> " build.log | sed 's#file:///home/runner/work/[^/]*/[^/]*/##' | head -n 100 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publier le journal de compilation
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-compilation-${{ github.run_number }}
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Localiser l'APK, le renommer ASphone-debug.apk et calculer son SHA-256
         run: |
