@@ -70,7 +70,9 @@ jobs:
           "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" > /dev/null
 
       - name: Compiler l'APK debug
-        run: gradle --no-daemon --console=plain --continue assembleDebug 2>&1 | tee build.log
+        run: |
+          set -o pipefail
+          gradle --no-daemon --console=plain --continue assembleDebug 2>&1 | tee build.log
 
       - name: Lister les erreurs de compilation
         if: failure()
