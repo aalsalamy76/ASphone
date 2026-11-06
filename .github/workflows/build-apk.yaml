@@ -1,0 +1,96 @@
+name: Build APK
+
+# Produit l'APK debug de A.Sphone et le publie comme artefact téléchargeable.
+# Le dépôt peut contenir soit le projet décompressé, soit seulement ASphone.zip :
+# dans ce cas, le zip est décompressé automatiquement sur GitHub.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Générer l'APK debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Décompresser ASphone.zip si besoin
+        run: |
+          set -euo pipefail
+          if [ -f settings.gradle.kts ]; then
+            echo "Projet déjà décompressé dans le dépôt."
+            exit 0
+          fi
+          zip_file=$(find . -maxdepth 1 -type f -iname "*.zip" -print -quit)
+          if [ -z "$zip_file" ]; then
+            echo "::error title=Projet absent::Aucun settings.gradle.kts ni fichier .zip à la racine du dépôt. Téléversez ASphone.zip à la racine."
+            exit 1
+          fi
+          echo "Décompression de $zip_file"
+          tmp=$(mktemp -d)
+          unzip -q -o "$zip_file" -d "$tmp"
+          settings=$(find "$tmp" -maxdepth 3 -type f -name settings.gradle.kts -print -quit)
+          if [ -z "$settings" ]; then
+            echo "::error title=Zip incorrect::Le zip ne contient pas settings.gradle.kts."
+            exit 1
+          fi
+          cp -a "$(dirname "$settings")"/. .
+          rm -rf "$tmp"
+          if [ ! -f app/build.gradle.kts ]; then
+            echo "::error title=Zip incomplet::Le zip ne contient pas app/build.gradle.kts."
+            exit 1
+          fi
+          echo "Projet décompressé."
+
+      - name: Installer JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Installer Gradle 8.13 (cache inclus)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Installer la plateforme Android 35 si absente
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+
+      - name: Compiler l'APK debug
+        run: gradle --no-daemon --console=plain assembleDebug
+
+      - name: Localiser l'APK, le renommer ASphone-debug.apk et calculer son SHA-256
+        run: |
+          set -euo pipefail
+          source_apk=$(find app/build/outputs/apk/debug -name "*.apk" -type f -print -quit)
+          if [ -z "$source_apk" ]; then
+            echo "::error title=APK introuvable::Aucun APK trouvé dans app/build/outputs/apk/debug."
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$source_apk" dist/ASphone-debug.apk
+          (cd dist && sha256sum ASphone-debug.apk > ASphone-debug.apk.sha256)
+          echo "### APK debug ASphone" >> "$GITHUB_STEP_SUMMARY"
+          echo "- SHA-256 : \`$(cut -d' ' -f1 dist/ASphone-debug.apk.sha256)\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publier l'APK ASphone comme artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ASphone-debug-${{ github.run_number }}
+          path: |
+            dist/ASphone-debug.apk
+            dist/ASphone-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
